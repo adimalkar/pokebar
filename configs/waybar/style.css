@@ -1,12 +1,29 @@
 /* PokeBar - Waybar CSS Styling Snippet */
 /* Add or import this into your ~/.config/waybar/style.css */
 
-#image.pokemon {
-    margin-left: 6px;
-    margin-right: 6px;
+/* Base Pokémon icon styling for any position (left, center, or right) */
+#image.pokemon,
+#image.pikachu {
+    margin-left: 4px;
+    margin-right: 4px;
     padding: 0 2px;
 }
 
-#image.pokemon:hover {
+/* Optional hover reaction */
+#image.pokemon:hover,
+#image.pikachu:hover {
     transition: transform 0.2s ease-in-out;
+}
+
+/* Smart edge margins when placed at the far edges of the bar */
+.modules-left > #image.pokemon:first-child,
+.modules-left > #image.pikachu:first-child {
+    margin-left: 6px;
+    margin-right: 4px;
+}
+
+.modules-right > #image.pokemon:last-child,
+.modules-right > #image.pikachu:last-child {
+    margin-left: 4px;
+    margin-right: 6px;
 }

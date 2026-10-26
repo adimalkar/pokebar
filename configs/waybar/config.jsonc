@@ -1,5 +1,5 @@
 // PokeBar - Waybar Module Configuration Snippet
-// Add "image#pokemon" to your "modules-left", "modules-center", or "modules-right"
+// Place "image#pokemon" wherever you like: "modules-left", "modules-center", or "modules-right"
 {
     "image#pokemon": {
         "exec": "$HOME/.config/pokebar/scripts/pokecycle",

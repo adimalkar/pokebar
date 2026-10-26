@@ -7,6 +7,7 @@ License: MIT
 
 import sys
 import os
+import re
 import shutil
 import random
 import subprocess
@@ -101,28 +102,24 @@ def extract_frames_ffmpeg(gif_path, out_dir):
 
 def extract_gif_frames(gif_path, out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    # Clear existing frames
     for f in glob.glob(os.path.join(out_dir, "frame_*.png")):
         try:
             os.remove(f)
         except OSError:
             pass
 
-    # Try Pillow first
     try:
         import PIL
         return extract_frames_pillow(gif_path, out_dir)
     except ImportError:
         pass
 
-    # Fallback to ImageMagick
     if shutil.which("magick") or shutil.which("convert"):
         try:
             return extract_frames_imagemagick(gif_path, out_dir)
         except Exception:
             pass
 
-    # Fallback to ffmpeg
     if shutil.which("ffmpeg"):
         try:
             return extract_frames_ffmpeg(gif_path, out_dir)
@@ -136,7 +133,6 @@ def set_pokemon(target):
     poke_id = None
     poke_name = None
 
-    # Handle special running Pikachu
     if target in ["pikachu-run", "runner", "pika-run", "pikachu_run"]:
         special_dir = os.path.join(ASSETS_DIR, "special", "pikachu-run")
         if not os.path.isdir(special_dir):
@@ -160,14 +156,12 @@ def set_pokemon(target):
             print("Set active Pokémon to: Pikachu (Running) [Special 4-Frame Runner]")
             return
 
-    # Check if number
     if target.isdigit():
         num = int(target)
         if 1 <= num <= 151:
             poke_id = num
             poke_name = GEN1_POKEMON[num - 1]
     else:
-        # Check by name
         if target in GEN1_POKEMON:
             poke_name = target
             poke_id = GEN1_POKEMON.index(target) + 1
@@ -176,7 +170,6 @@ def set_pokemon(target):
         print(f"Error: Unknown Gen 1 Pokémon '{target}'. Use 'pokebar list' to see all 151.")
         sys.exit(1)
 
-    # Locate GIF asset
     gif_fname = f"{poke_id:03d}_{poke_name}.gif"
     gif_path = os.path.join(ASSETS_DIR, "pokemon", gif_fname)
     if not os.path.exists(gif_path):
@@ -186,7 +179,6 @@ def set_pokemon(target):
         print(f"Error: Asset file {gif_fname} not found in {ASSETS_DIR}")
         sys.exit(1)
 
-    # Extract frames into CURRENT_DIR
     os.makedirs(CURRENT_DIR, exist_ok=True)
     count = extract_gif_frames(gif_path, CURRENT_DIR)
 
@@ -217,6 +209,76 @@ def get_status():
     else:
         print("No active Pokémon configured yet. Run 'pokebar set pikachu'.")
         return None
+
+def get_waybar_position():
+    cfg_candidates = [
+        os.path.expanduser("~/.config/waybar/config"),
+        os.path.expanduser("~/.config/waybar/config.jsonc"),
+    ]
+    for p in cfg_candidates:
+        if os.path.exists(p):
+            real_path = os.path.realpath(p)
+            try:
+                with open(real_path) as f:
+                    content = f.read()
+                for group in ["modules-left", "modules-center", "modules-right"]:
+                    pattern = rf'"{group}"\s*:\s*\[([^\]]*)\]'
+                    m = re.search(pattern, content, re.DOTALL)
+                    if m and ("image#pokemon" in m.group(1) or "image#pikachu" in m.group(1)):
+                        return group, real_path
+            except Exception:
+                pass
+    return None, None
+
+def set_waybar_position(pos):
+    pos = pos.lower().strip()
+    mapping = {
+        "left": "modules-left",
+        "center": "modules-center",
+        "centre": "modules-center",
+        "right": "modules-right"
+    }
+    if pos not in mapping:
+        print(f"Error: Unknown position '{pos}'. Choose 'left', 'center', or 'right'.")
+        sys.exit(1)
+
+    group_target = mapping[pos]
+    cfg_candidates = [
+        os.path.expanduser("~/.config/waybar/config"),
+        os.path.expanduser("~/.config/waybar/config.jsonc"),
+    ]
+    target_file = None
+    for p in cfg_candidates:
+        if os.path.exists(p):
+            target_file = os.path.realpath(p)
+            break
+
+    if not target_file:
+        print("Error: Could not locate ~/.config/waybar/config or config.jsonc")
+        sys.exit(1)
+
+    with open(target_file, "r") as f:
+        content = f.read()
+
+    # Remove existing references from all module arrays
+    content = re.sub(r'[\t ]*"image#(?:pokemon|pikachu)"\s*,\s*\n?', '', content)
+
+    # Insert into requested group at the start
+    pattern = rf'("{group_target}"\s*:\s*\[\s*\n)'
+    if not re.search(pattern, content):
+        print(f"Error: Could not find '{group_target}' array in {target_file}")
+        sys.exit(1)
+
+    replacement = rf'\g<1>\t"image#pokemon",\n'
+    new_content = re.sub(pattern, replacement, content, count=1)
+
+    with open(target_file, "w") as f:
+        f.write(new_content)
+
+    print(f"✓ Moved Pokémon module to '{group_target}' in {target_file}")
+    if shutil.which("waybar"):
+        subprocess.run(["pkill", "-SIGUSR2", "waybar"], stderr=subprocess.DEVNULL)
+        print("✓ Reloaded Waybar successfully!")
 
 def list_pokemon():
     print("=== PokeBar: Gen 1 Pokémon (151 Total) ===")
@@ -263,6 +325,7 @@ def main():
 
 Commands:
   set <name|id|pikachu-run>  Set the active Pokémon (e.g., 'pokebar set charizard' or 'pokebar set 25')
+  position [left|center|right] Move Pokémon to left, center, or right in Waybar (or check current)
   list                       List all 151 Gen 1 Pokémon
   random                     Pick and activate a random Gen 1 Pokémon
   next                       Switch to the next Pokémon in the Pokédex
@@ -278,6 +341,17 @@ Commands:
             print("Error: Missing Pokémon name or ID. Example: 'pokebar set gengar'")
             sys.exit(1)
         set_pokemon(sys.argv[2])
+    elif cmd in ["position", "pos", "move", "place"]:
+        if len(sys.argv) >= 3:
+            set_waybar_position(sys.argv[2])
+        else:
+            group, cfg = get_waybar_position()
+            if group:
+                print(f"Waybar Position: {group} (in {cfg})")
+                print("To change position: 'pokebar position left', 'pokebar position center', or 'pokebar position right'")
+            else:
+                print("Pokémon module not currently detected in ~/.config/waybar/config")
+                print("You can add it to 'modules-left', 'modules-center', or 'modules-right'.")
     elif cmd in ["list", "ls"]:
         list_pokemon()
     elif cmd in ["random", "rand"]:
@@ -300,7 +374,6 @@ Commands:
     elif cmd in ["interact", "click"]:
         interact()
     else:
-        # If user just typed "pokebar charizard"
         set_pokemon(cmd)
 
 if __name__ == "__main__":

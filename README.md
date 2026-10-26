@@ -27,8 +27,96 @@
 </p>
 
 <p align="center">
-  <em>Live capture of the running Pikachu animation in the leftmost section of Waybar on Hyprland.</em>
+  <em>Live capture of the running Pikachu animation on Waybar under Hyprland.</em>
 </p>
+
+---
+
+## 📍 Place It Anywhere On Your Bar!
+
+PokeBar is **not locked to any single position**. You can anchor your running Pokémon anywhere you want:
+- ⬅️ **Far Left**: Running along the leading edge of your status bar.
+- 🪟 **Next to Active Window Title**: Following your active application name.
+- 🎯 **Center**: Running right alongside your workspace indicators or clock.
+- 🔋 **Next to System Stats / Battery**: Patrolling next to CPU, RAM, or battery meters.
+- ➡️ **Far Right**: Guarding the edge of your system tray.
+
+### Method 1: Instant Dynamic Placement via CLI (Waybar)
+
+Move your Pokémon to any section with a single command without opening config files:
+
+```bash
+# Move to the leftmost section
+pokebar position left
+
+# Move to the center (next to workspaces/clock)
+pokebar position center
+
+# Move to the right section (next to battery/tray)
+pokebar position right
+
+# Check current active position
+pokebar position
+```
+*Waybar automatically reloads with the new position immediately!*
+
+---
+
+### Method 2: Manual Layout Configuration
+
+You can place `"image#pokemon"` anywhere within `"modules-left"`, `"modules-center"`, or `"modules-right"` in your `~/.config/waybar/config` (or `config.jsonc`):
+
+#### Example A: Far Left (Default)
+```jsonc
+"modules-left": [
+    "image#pokemon",       // <-- Far leftmost position
+    "custom/separator",
+    "hyprland/window"
+]
+```
+
+#### Example B: Center (Next to Workspaces or Clock)
+```jsonc
+"modules-center": [
+    "image#pokemon",       // <-- Placed right before workspaces or clock
+    "hyprland/workspaces",
+    "clock"
+]
+```
+
+#### Example C: Right Section (Next to Battery / Hardware / Tray)
+```jsonc
+"modules-right": [
+    "image#pokemon",       // <-- Placed before system meters
+    "pulseaudio",
+    "battery",
+    "tray"
+]
+```
+
+#### Smart CSS Spacing for Any Position
+In your `~/.config/waybar/style.css`, the included CSS automatically adapts padding whether your Pokémon is in the center or at the far edges:
+
+```css
+/* Universal Pokémon icon styling */
+#image.pokemon,
+#image.pikachu {
+    margin-left: 4px;
+    margin-right: 4px;
+    padding: 0 2px;
+}
+
+/* Smart edge spacing when placed at the very edges */
+.modules-left > #image.pokemon:first-child {
+    margin-left: 6px;
+    margin-right: 4px;
+}
+
+.modules-right > #image.pokemon:last-child {
+    margin-left: 4px;
+    margin-right: 6px;
+}
+```
 
 ---
 
@@ -57,7 +145,7 @@ Traditional GIF status bar implementations fork heavy shell scripts or parse ima
   - **Left-click**: Plays Pokémon cry/reaction dialogue via `notify-send`.
   - **Right-click**: Cycles to the next Pokémon in the Pokédex.
   - **Middle-click**: Picks a random Pokémon on the fly.
-- 🎛️ **CLI Control**: Rich command-line tool `pokebar` to manage, preview, list, and switch Pokémon.
+- 🎛️ **CLI Control**: Rich command-line tool `pokebar` to manage, preview, list, position, and switch Pokémon.
 
 ---
 
@@ -76,7 +164,7 @@ cd pokebar
 2. Compiles the ultra-fast C frame cycler (`scripts/pokecycle.c`) using `gcc -O3` (or `clang`). Falls back to a POSIX shell script if no compiler is available.
 3. Installs the `pokebar` CLI tool to `~/.local/bin/pokebar`.
 4. Initializes the default running Pikachu animation.
-5. Detects your bar (Waybar / Polybar) and displays the exact integration snippet.
+5. Detects your bar (Waybar / Polybar) and displays the integration snippet.
 
 ---
 
@@ -101,23 +189,16 @@ In your Waybar configuration file (typically `~/.config/waybar/config` or `~/.co
 
 *Note: You can adjust `"size"` (e.g. `20`, `24`, `28`, `32`) to match your bar height, and `"interval"` (`0.08` for faster, `0.12` for normal, `0.16` for relaxed pace).*
 
-#### Step 2: Add to Your Bar Layout
-Insert `"image#pokemon"` into your `"modules-left"`, `"modules-center"`, or `"modules-right"` array. For the leftmost edge of your bar:
+#### Step 2: Choose Position & Add to Bar Layout
+Insert `"image#pokemon"` wherever you want it inside `"modules-left"`, `"modules-center"`, or `"modules-right"`.
 
-```jsonc
-"modules-left": [
-    "image#pokemon",
-    // ... your other modules
-],
-```
-
-#### Step 3: Add CSS Spacing (Optional but Recommended)
+#### Step 3: Add CSS Spacing
 In your `~/.config/waybar/style.css`:
 
 ```css
 #image.pokemon {
-    margin-left: 6px;
-    margin-right: 6px;
+    margin-left: 4px;
+    margin-right: 4px;
     padding: 0 2px;
 }
 ```
@@ -148,9 +229,13 @@ click-middle = pokebar random
 ```
 
 #### Step 2: Add to Bar
-Add `pokemon` to your modules list:
+Add `pokemon` anywhere in your modules list:
 ```ini
 modules-left = pokemon ...
+; or in center:
+; modules-center = ... pokemon ...
+; or on the right:
+; modules-right = ... pokemon
 ```
 
 #### Step 3: Restart Polybar
@@ -175,11 +260,6 @@ If you use a desktop environment that doesn't use Waybar or Polybar, you can run
   - `--x <px>`: Horizontal desktop position.
   - `--y <px>`: Vertical desktop position.
 
-To make it start automatically on login, add it to your DE's Startup Applications or window manager autostart file (`~/.config/hypr/hyprland.conf`, `~/.config/i3/config`, `~/.xprofile`, etc.):
-```bash
-exec = ~/.config/pokebar/scripts/pokebar-tray.py &
-```
-
 ---
 
 ## 🕹️ CLI Usage & Commands
@@ -187,6 +267,12 @@ exec = ~/.config/pokebar/scripts/pokebar-tray.py &
 Once installed, use the `pokebar` command in your terminal:
 
 ```bash
+# Move Pokémon position dynamically in Waybar
+pokebar position left     # Move to left section
+pokebar position center   # Move to center section
+pokebar position right    # Move to right section
+pokebar position          # Check current position
+
 # Set any Pokémon by name
 pokebar set charizard
 pokebar set gengar
