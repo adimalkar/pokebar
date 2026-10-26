@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""
+pokebar - CLI Manager for Animated Pokemon Status Bar Widgets
+Author: Aditya Malkar (https://github.com/adimalkar)
+License: MIT
+"""
+
+import sys
+import os
+import shutil
+import random
+import subprocess
+import glob
+
+GEN1_POKEMON = [
+    "bulbasaur", "ivysaur", "venusaur", "charmander", "charmeleon", "charizard",
+    "squirtle", "wartortle", "blastoise", "caterpie", "metapod", "butterfree",
+    "weedle", "kakuna", "beedrill", "pidgey", "pidgeotto", "pidgeot",
+    "rattata", "raticate", "spearow", "fearow", "ekans", "arbok",
+    "pikachu", "raichu", "sandshrew", "sandslash", "nidoran-f", "nidorina",
+    "nidoqueen", "nidoran-m", "nidorino", "nidoking", "clefairy", "clefable",
+    "vulpix", "ninetales", "jigglypuff", "wigglytuff", "zubat", "golbat",
+    "oddish", "gloom", "vileplume", "paras", "parasect", "venonat",
+    "venomoth", "diglett", "dugtrio", "meowth", "persian", "psyduck",
+    "golduck", "mankey", "primeape", "growlithe", "arcanine", "poliwag",
+    "poliwhirl", "poliwrath", "abra", "kadabra", "alakazam", "machop",
+    "machoke", "machamp", "bellsprout", "weepinbell", "victreebel", "tentacool",
+    "tentacruel", "geodude", "graveler", "golem", "ponyta", "rapidash",
+    "slowpoke", "slowbro", "magnemite", "magneton", "farfetchd", "doduo",
+    "dodrio", "seel", "dewgong", "grimer", "muk", "shellder",
+    "cloyster", "gastly", "haunter", "gengar", "onix", "drowzee",
+    "hypno", "krabby", "kingler", "voltorb", "electrode", "exeggcute",
+    "exeggutor", "cubone", "marowak", "hitmonlee", "hitmonchan", "lickitung",
+    "koffing", "weezing", "rhyhorn", "rhydon", "chansey", "tangela",
+    "kangaskhan", "horsea", "seadra", "goldeen", "seaking", "staryu",
+    "starmie", "mr-mime", "scyther", "jynx", "electabuzz", "magmar",
+    "pinsir", "tauros", "magikarp", "gyarados", "lapras", "ditto",
+    "eevee", "vaporeon", "jolteon", "flareon", "porygon", "omanyte",
+    "omastar", "kabuto", "kabutops", "aerodactyl", "snorlax", "articuno",
+    "zapdos", "moltres", "dratini", "dragonair", "dragonite", "mewtwo", "mew"
+]
+
+HOME = os.path.expanduser("~")
+POKEBAR_DIR = os.environ.get("POKEBAR_DIR", os.path.join(HOME, ".config", "pokebar"))
+CURRENT_DIR = os.path.join(POKEBAR_DIR, "current")
+ASSETS_DIR = os.path.join(POKEBAR_DIR, "assets")
+STATE_SHM = "/dev/shm/pokebar_idx"
+STATE_TMP = "/tmp/pokebar_idx"
+
+# Find assets relative to script if running directly from repo
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+LOCAL_ASSETS = os.path.join(REPO_ROOT, "assets")
+if os.path.isdir(LOCAL_ASSETS) and not os.path.isdir(ASSETS_DIR):
+    ASSETS_DIR = LOCAL_ASSETS
+
+def send_notification(title, message, icon_path=None):
+    if shutil.which("notify-send"):
+        cmd = ["notify-send", title, message]
+        if icon_path and os.path.exists(icon_path):
+            cmd.extend(["-i", icon_path])
+        try:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+def reset_cycler_index():
+    for f in [STATE_SHM, STATE_TMP]:
+        if os.path.exists(f):
+            try:
+                with open(f, "w") as fp:
+                    fp.write("0\n")
+            except Exception:
+                pass
+
+def extract_frames_pillow(gif_path, out_dir):
+    from PIL import Image, ImageSequence
+    im = Image.open(gif_path)
+    count = 0
+    for i, frame in enumerate(ImageSequence.Iterator(im)):
+        rgba = frame.convert("RGBA")
+        out_file = os.path.join(out_dir, f"frame_{i}.png")
+        rgba.save(out_file)
+        count += 1
+    return count
+
+def extract_frames_imagemagick(gif_path, out_dir):
+    out_pattern = os.path.join(out_dir, "frame_%d.png")
+    cmd = ["magick", gif_path, "-coalesce", out_pattern]
+    if not shutil.which("magick") and shutil.which("convert"):
+        cmd = ["convert", gif_path, "-coalesce", out_pattern]
+    subprocess.run(cmd, check=True)
+    frames = glob.glob(os.path.join(out_dir, "frame_*.png"))
+    return len(frames)
+
+def extract_frames_ffmpeg(gif_path, out_dir):
+    out_pattern = os.path.join(out_dir, "frame_%d.png")
+    cmd = ["ffmpeg", "-y", "-i", gif_path, out_pattern]
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    frames = glob.glob(os.path.join(out_dir, "frame_*.png"))
+    return len(frames)
+
+def extract_gif_frames(gif_path, out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    # Clear existing frames
+    for f in glob.glob(os.path.join(out_dir, "frame_*.png")):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+
+    # Try Pillow first
+    try:
+        import PIL
+        return extract_frames_pillow(gif_path, out_dir)
+    except ImportError:
+        pass
+
+    # Fallback to ImageMagick
+    if shutil.which("magick") or shutil.which("convert"):
+        try:
+            return extract_frames_imagemagick(gif_path, out_dir)
+        except Exception:
+            pass
+
+    # Fallback to ffmpeg
+    if shutil.which("ffmpeg"):
+        try:
+            return extract_frames_ffmpeg(gif_path, out_dir)
+        except Exception:
+            pass
+
+    raise RuntimeError("No frame extractor found! Please install python-pillow, imagemagick, or ffmpeg.")
+
+def set_pokemon(target):
+    target = target.strip().lower()
+    poke_id = None
+    poke_name = None
+
+    # Handle special running Pikachu
+    if target in ["pikachu-run", "runner", "pika-run", "pikachu_run"]:
+        special_dir = os.path.join(ASSETS_DIR, "special", "pikachu-run")
+        if not os.path.isdir(special_dir):
+            special_dir = os.path.join(REPO_ROOT, "assets", "special", "pikachu-run")
+        
+        if os.path.isdir(special_dir):
+            os.makedirs(CURRENT_DIR, exist_ok=True)
+            for f in glob.glob(os.path.join(CURRENT_DIR, "frame_*.png")):
+                os.remove(f)
+            frames = sorted(glob.glob(os.path.join(special_dir, "frame_*.png")))
+            for i, src in enumerate(frames):
+                shutil.copyfile(src, os.path.join(CURRENT_DIR, f"frame_{i}.png"))
+            
+            with open(os.path.join(CURRENT_DIR, "meta.txt"), "w") as f:
+                f.write(f"{len(frames)}\n")
+            with open(os.path.join(CURRENT_DIR, "info.txt"), "w") as f:
+                f.write("Pikachu (Running)\n25\n")
+            
+            reset_cycler_index()
+            send_notification("PokeBar", "Pikachu (Running) is now active! ⚡", os.path.join(CURRENT_DIR, "frame_0.png"))
+            print("Set active Pokémon to: Pikachu (Running) [Special 4-Frame Runner]")
+            return
+
+    # Check if number
+    if target.isdigit():
+        num = int(target)
+        if 1 <= num <= 151:
+            poke_id = num
+            poke_name = GEN1_POKEMON[num - 1]
+    else:
+        # Check by name
+        if target in GEN1_POKEMON:
+            poke_name = target
+            poke_id = GEN1_POKEMON.index(target) + 1
+
+    if not poke_id or not poke_name:
+        print(f"Error: Unknown Gen 1 Pokémon '{target}'. Use 'pokebar list' to see all 151.")
+        sys.exit(1)
+
+    # Locate GIF asset
+    gif_fname = f"{poke_id:03d}_{poke_name}.gif"
+    gif_path = os.path.join(ASSETS_DIR, "pokemon", gif_fname)
+    if not os.path.exists(gif_path):
+        gif_path = os.path.join(REPO_ROOT, "assets", "pokemon", gif_fname)
+
+    if not os.path.exists(gif_path):
+        print(f"Error: Asset file {gif_fname} not found in {ASSETS_DIR}")
+        sys.exit(1)
+
+    # Extract frames into CURRENT_DIR
+    os.makedirs(CURRENT_DIR, exist_ok=True)
+    count = extract_gif_frames(gif_path, CURRENT_DIR)
+
+    with open(os.path.join(CURRENT_DIR, "meta.txt"), "w") as f:
+        f.write(f"{count}\n")
+    with open(os.path.join(CURRENT_DIR, "info.txt"), "w") as f:
+        f.write(f"{poke_name.capitalize()}\n{poke_id}\n")
+
+    reset_cycler_index()
+    first_frame = os.path.join(CURRENT_DIR, "frame_0.png")
+    send_notification("PokeBar", f"#{poke_id:03d} {poke_name.capitalize()} is now active! 🎉", first_frame)
+    print(f"Set active Pokémon to: #{poke_id:03d} {poke_name.capitalize()} ({count} frames)")
+
+def get_status():
+    info_file = os.path.join(CURRENT_DIR, "info.txt")
+    meta_file = os.path.join(CURRENT_DIR, "meta.txt")
+    if os.path.exists(info_file):
+        with open(info_file) as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
+            name = lines[0] if len(lines) > 0 else "Unknown"
+            poke_id = lines[1] if len(lines) > 1 else "?"
+            frames = "?"
+            if os.path.exists(meta_file):
+                with open(meta_file) as mf:
+                    frames = mf.read().strip()
+            print(f"Current Pokémon: {name} (ID: #{poke_id}, Frames: {frames})")
+            return int(poke_id) if str(poke_id).isdigit() else 25
+    else:
+        print("No active Pokémon configured yet. Run 'pokebar set pikachu'.")
+        return None
+
+def list_pokemon():
+    print("=== PokeBar: Gen 1 Pokémon (151 Total) ===")
+    for i in range(0, 151, 3):
+        row = []
+        for j in range(3):
+            if i + j < 151:
+                idx = i + j + 1
+                name = GEN1_POKEMON[idx - 1]
+                row.append(f"{idx:3d}. {name.capitalize():<14}")
+        print("  " + "  ".join(row))
+    print("\nSpecial variants:")
+    print("  * pikachu-run  (Iconic 4-frame fast running animation)")
+
+def interact():
+    info_file = os.path.join(CURRENT_DIR, "info.txt")
+    first_frame = os.path.join(CURRENT_DIR, "frame_0.png")
+    name = "Pokemon"
+    if os.path.exists(info_file):
+        with open(info_file) as f:
+            lines = [l.strip() for l in f.readlines()]
+            if lines:
+                name = lines[0]
+    
+    cries = {
+        "Pikachu": "Pika Pika! ⚡",
+        "Pikachu (Running)": "Pikaaaa-chuuuu! ⚡⚡",
+        "Charizard": "ROAAAR! 🔥",
+        "Blastoise": "Blastooo! 💧",
+        "Venusaur": "Veeenusaaaur! 🍃",
+        "Gengar": "Gengaaar! 👻",
+        "Mewtwo": "...",
+        "Mew": "Mew! ✨",
+        "Eevee": "Eev-ee! ❤️",
+        "Snorlax": "Zzzzz... 💤"
+    }
+    cry = cries.get(name, f"{name}! ✨")
+    send_notification(name, cry, first_frame)
+    print(f"{name}: {cry}")
+
+def main():
+    if len(sys.argv) < 2:
+        print("""Usage: pokebar <command> [arguments]
+
+Commands:
+  set <name|id|pikachu-run>  Set the active Pokémon (e.g., 'pokebar set charizard' or 'pokebar set 25')
+  list                       List all 151 Gen 1 Pokémon
+  random                     Pick and activate a random Gen 1 Pokémon
+  next                       Switch to the next Pokémon in the Pokédex
+  prev                       Switch to the previous Pokémon in the Pokédex
+  status                     Display current active Pokémon information
+  interact                   Trigger click reaction/dialogue for current Pokémon
+""")
+        sys.exit(0)
+
+    cmd = sys.argv[1].lower()
+    if cmd in ["set", "choose", "select"]:
+        if len(sys.argv) < 3:
+            print("Error: Missing Pokémon name or ID. Example: 'pokebar set gengar'")
+            sys.exit(1)
+        set_pokemon(sys.argv[2])
+    elif cmd in ["list", "ls"]:
+        list_pokemon()
+    elif cmd in ["random", "rand"]:
+        choice = random.choice(GEN1_POKEMON)
+        set_pokemon(choice)
+    elif cmd in ["next"]:
+        curr = get_status()
+        if curr is None:
+            curr = 1
+        nxt = (curr % 151) + 1
+        set_pokemon(str(nxt))
+    elif cmd in ["prev"]:
+        curr = get_status()
+        if curr is None:
+            curr = 1
+        prv = 151 if curr <= 1 else curr - 1
+        set_pokemon(str(prv))
+    elif cmd in ["status", "info"]:
+        get_status()
+    elif cmd in ["interact", "click"]:
+        interact()
+    else:
+        # If user just typed "pokebar charizard"
+        set_pokemon(cmd)
+
+if __name__ == "__main__":
+    main()

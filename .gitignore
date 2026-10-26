@@ -1,0 +1,12 @@
+# Build artifacts
+scripts/pokecycle
+*.o
+*.so
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db

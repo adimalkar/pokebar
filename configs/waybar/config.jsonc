@@ -1,0 +1,13 @@
+// PokeBar - Waybar Module Configuration Snippet
+// Add "image#pokemon" to your "modules-left", "modules-center", or "modules-right"
+{
+    "image#pokemon": {
+        "exec": "$HOME/.config/pokebar/scripts/pokecycle",
+        "size": 24,
+        "interval": 0.12,
+        "tooltip": false,
+        "on-click": "$HOME/.local/bin/pokebar interact",
+        "on-click-right": "$HOME/.local/bin/pokebar next",
+        "on-click-middle": "$HOME/.local/bin/pokebar random"
+    }
+}

@@ -1,0 +1,12 @@
+/* PokeBar - Waybar CSS Styling Snippet */
+/* Add or import this into your ~/.config/waybar/style.css */
+
+#image.pokemon {
+    margin-left: 6px;
+    margin-right: 6px;
+    padding: 0 2px;
+}
+
+#image.pokemon:hover {
+    transition: transform 0.2s ease-in-out;
+}
